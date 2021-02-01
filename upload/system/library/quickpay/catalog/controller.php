@@ -35,19 +35,6 @@ trait Controller {
 	 * Route: Create a payment link on the session order
 	 */
 	public function payment_link() {
-        
-        $this->load->model('localisation/currency');
-		$data['currencies'] = array();
-		$results = $this->model_localisation_currency->getCurrencies();
-        if( isset($results['DKK']) ) $this->session->data['currency'] = "DKK"; 
-        else {
-			$json['error'] = 'This payment method work only with DKK currency. Please, contact to store owner!';
-            $this->response->addHeader('Content-Type: application/json');
-            $this->response->setOutput(json_encode($json));
-            return;            
-        } 
-        
-                                  
 		$this->load->model( 'extension/payment/' . $this->getInstanceName() );
         
 		try {
@@ -126,7 +113,7 @@ trait Controller {
 			}
 			$this->log->write( $e->getMessage() );
 		}
-        fclose($fp);     
+        fclose($fp);
 	}
 
 	/**
@@ -174,7 +161,7 @@ trait Controller {
 		// Update order state
         $fp = fopen(DIR_LOGS."log_adm2.txt", "w+");
         $mytext = $xml;
-        $test = fwrite($fp, 'order_status_id='.$this->instanceConfig( 'order_status_id' )); 
+        $test = fwrite($fp, 'order_status_id='.$this->instanceConfig( 'order_status_id' ));
         fclose($fp);
         
 		$this->model_checkout_order->addOrderHistory( $order_id, $this->instanceConfig( 'order_status_id' ) );
