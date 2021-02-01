@@ -1,0 +1,14 @@
+### 1.0.3 - 2021-01-26
+- Fix: Don't include shipping address if not valid
+
+### 1.0.2 - 2021-01-25
+- Fix: Calculate coupon values per item
+- Fix: Include correct shipping address
+- Fix: Include shipping price
+
+### 1.0.1 - 2018.03.01
+- Fix: Display message overriding causing possible errors to display
+- Fix: Undefined index in QuickPay\Catalog\Model::getCustomerEmail
+
+### 1.0.0 - 2018.02.15
+- Initial version
