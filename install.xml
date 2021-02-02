@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<modification>
+	<name>QuickPay</name>
+	<code>quickpay</code>
+	<version>1.0.5</version>
+	<author>QuickPay ApS</author>
+	<link>https://quickpay.net</link>
+
+  	<file path="admin/controller/sale/order.php">
+		<operation>
+            <search index="2"><![CDATA[$data['api_token'] = '';]]></search>
+		  	<add position="after" offset="1">
+			$data['quickpay'] = [];
+
+			$api_key = $this->config->get('payment_quickpay_api_key');
+			  
+			if (!empty($api_key)) {
+			    $transaction_id = $this->db->query("SELECT transaction_id FROM " . DB_PREFIX . "quickpay_transaction WHERE order_id = '" . (int)$order_info['order_id'] . "'")->row['transaction_id'];
+			  
+			  	if (!empty($transaction_id)) {
+			  		require DIR_SYSTEM . 'library/quickpay/quickpay.php';
+			  
+			  		$quickpay = new QuickPay\QuickPay($this->registry);
+
+					if ($quickpay) {
+						$client = $quickpay->api(':' . $api_key);
+						$payment = $quickpay->request->get('/payments/' . (int)$transaction_id)->asObject();
+				  
+						if (!empty($payment->accepted)) {
+				  			$balance = 0;
+		                    $captured = 0;
+
+		                    foreach ($payment->operations as $operation) {
+		                        if ($operation->qp_status_code == 20000) {
+		                            if ($operation->type == 'authorize') {
+		                                $balance += $operation->amount;
+		                            } else if ($operation->type == 'capture') {
+		                                $balance -= $operation->amount;
+		                                $captured += $operation->amount;
+		                            } else if ($operation->type == 'refund') {
+		                                $captured -= $operation->amount;
+		                                $balance = 0;
+		                            }
+		                        }
+		                    }
+							
+		                    $data['quickpay']['test_mode'] = !empty($payment->test_mode) ? true : false;
+		                    $data['quickpay']['transaction_id'] = $payment->id;
+		                    $data['quickpay']['cardnumber'] = str_pad($payment->metadata->last4, 19, '**** ', STR_PAD_LEFT);
+		                    $data['quickpay']['brand'] = $payment->metadata->brand;
+		                    $data['quickpay']['acquirer'] = ucfirst($payment->acquirer);
+		                    $data['quickpay']['expiration'] = $payment->metadata->exp_month . '/' . $payment->metadata->exp_year;
+		                    $data['quickpay']['amount'] = $this->currency->format($payment->operations[0]->amount / 100, $payment->currency, $order_info['currency_value']);
+		                    $data['quickpay']['captured'] = $this->currency->format($captured / 100, $payment->currency, $order_info['currency_value']);
+		                    $data['quickpay']['balance'] = $this->currency->format($balance / 100, $payment->currency, $order_info['currency_value']);
+		                    $data['quickpay']['raw_balance'] = $balance / 100;
+		                    $data['quickpay']['raw_captured'] = $captured / 100;
+							$data['quickpay']['currency'] = $payment->currency;
+				  		}
+					}
+			  	}
+			}
+		    </add>
+        </operation>
+		<operation>
+			<search index="0"><![CDATA[protected function validate() {]]></search>
+			<add position="before" offset="0">
+			public function quickpay() {
+		        $json = [];
+				
+				if (!empty($this->request->get['action'])) {
+					if (!empty($this->request->get['transaction_id'])) {
+			            $action = $this->request->get['action'];
+			            $transaction_id = $this->request->get['transaction_id'];
+
+			            if (!empty($this->request->post['amount'])) {
+			                $amount = str_replace(array('.', ','), '', $this->request->post['amount']);
+							
+							$api_key = $this->config->get('payment_quickpay_api_key');
+							  
+							if (!empty($api_key)) {
+								require DIR_SYSTEM . 'library/quickpay/quickpay.php';
+						  
+						  		$quickpay = new QuickPay\QuickPay($this->registry);
+
+								if ($quickpay) {
+									$client = $quickpay->api(':' . $api_key);
+									$payment = $quickpay->request->get('/payments/' . (int)$transaction_id)->asObject();
+							  
+									if (!empty($payment->accepted)) {
+										if ($action == 'capture') {
+					                        $capture = $quickpay->request->post('/payments/' . (int)$transaction_id . '/capture', [ 'amount' => $amount ])->asObject();
+
+					                        if ($capture->accepted) {
+					                            $json['success'] = true;
+					                        } else {
+					                            $json['error'] = 'Capturering failed. Please check transaction in QuickPay Manager';
+					                        }
+					                    } else if ($action == 'refund') {
+					                        $capture = $quickpay->request->post('/payments/' . (int)$transaction_id . '/refund', [ 'amount' => $amount ])->asObject();
+
+					                        if ($capture->accepted) {
+					                            $json['success'] = true;
+					                        } else {
+					                            $json['error'] = 'Refunding failed. Please check transaction in QuickPay Manager';
+					                        }
+					                    }
+									} else {
+					                    $json['error'] = 'Payment not authorized';
+					                }
+								}
+							}
+			            }
+			        }
+				}
+
+		        $this->response->addHeader('Content-Type: application/json');
+				$this->response->setOutput(json_encode($json));
+		    }
+			</add>
+		</operation>
+    </file>
+	
+	<file path="admin/view/template/sale/order_info.twig">
+		<operation>
+			<search index="0"><![CDATA[<h3 class="panel-title"><i class="fa fa-cog"></i> {{ text_option }}</h3>]]></search>
+			<add position="before" offset="2"><![CDATA[
+			{% if quickpay %}
+				<style>
+				#quickpay-manager .panel-title {
+                    width: 100%;
+                }
+                #quickpay-manager .row input {
+                    margin: -5px 0px;
+                }
+                #quickpay-manager .row button {
+                    margin: -8px 0px -4px;
+                }
+                #quickpay-manager .row .col-sm-9 {
+                    margin-left: -15px;
+                }
+                </style>
+				<div id="quickpay-manager" class="panel panel-default">
+		          <div class="panel-heading">
+		            <h3 class="panel-title"><i class="fa fa-credit-card"></i> QuickPay Manager <a href="https://manage.quickpay.net" target="_blank" class="btn btn-xs btn-default pull-right"><i class="fa fa-external-link"></i> Go to QuickPay Manager</a></h3>
+		          </div>
+		          <table class="table">
+		            <tr>
+		              <td style="width: 1%"><button data-toggle="tooltip" title="Transaction ID" class="btn btn-info btn-xs"><i class="fa fa-id-card fa-fw"></i></button></td>
+		              <td>{{ quickpay.transaction_id }} {% if quickpay.test_mode %}<i class="fa fa-exclamation-triangle"></i>{% endif %}</td>
+		            </tr>
+		            <tr>
+		              <td style="width: 1%"><button data-toggle="tooltip" title="Card Details" class="btn btn-info btn-xs"><i class="fa fa-credit-card fa-fw"></i></button></td>
+		              <td>{{ quickpay.cardnumber }} (Expiration: {{ quickpay.expiration }})</td>
+		            </tr>
+		            <tr>
+		              <td style="width: 1%"><button data-toggle="tooltip" title="Amount" class="btn btn-info btn-xs"><i class="fa fa-money fa-fw"></i></button></td>
+		              <td>{{ quickpay.amount }} (Captured: <span id="quickpay-captured" data-amount="{{ quickpay.raw_captured }}">{{ quickpay.captured }}</span> - Balance: <span id="quickpay-balance" data-amount="{{ quickpay.raw_balance }}">{{ quickpay.balance }}</span>)</td>
+		            </tr>
+		            <tr>
+		              <td style="width: 1%"><button data-toggle="tooltip" title="Action" class="btn btn-info btn-xs"><i class="fa fa-cogs fa-fw"></i></button></td>
+		              <td>
+		                <div class="row">
+		                  <div class="col-sm-3">
+		                    <input type="text" value="{{ quickpay.raw_balance }}" placeholder="0.00" class="form-control input-sm" id="quickpay-amount" />
+		                  </div>
+		                  <div class="col-sm-9">
+		                    <button id="quickpay-capture" class="btn btn-sm btn-primary">Capture</button>
+		                    <button id="quickpay-refund" class="btn btn-sm btn-default">Refund</button>
+		                  </div>
+		                </div>
+		              </td>
+		            </tr>
+		          </table>
+		        </div>
+		        <script type="text/javascript" src="view/javascript/jquery/jquery.number.js"></script>
+		        <script type="text/javascript"><!--
+		        $(document).ready(function() {
+		            formatMoney({{ quickpay.raw_balance }});
+		        });
+		        $('#quickpay-amount').focusout(function() {
+		            formatMoney($(this).val().replace('.', '').replace(',', '.'));
+		        });
+
+		        function formatMoney(amount) {
+		            if (amount > $('#quickpay-captured').data('amount')) {
+		                $('#quickpay-refund').attr('disabled', true);
+		            } else {
+		                $('#quickpay-refund').attr('disabled', false);
+		            }
+
+		            if (amount > $('#quickpay-balance').data('amount')) {
+		                $('#quickpay-capture').attr('disabled', true);
+		            } else {
+		                $('#quickpay-capture').attr('disabled', false);
+		            }
+
+		            $('#quickpay-amount').val($.number(amount, 2, ',', '.'));
+		        }
+		        --></script>
+		        <script type="text/javascript"><!--
+		        $('#quickpay-capture').on('click', function() {
+		            var capture_conf = confirm('Capture ' + $('#quickpay-amount').val() + ' {{ quickpay.currency }}');
+		            if (capture_conf) {
+		                $.ajax({
+		            		url: 'index.php?route=sale/order/quickpay&user_token={{ user_token }}&action=capture&transaction_id={{ quickpay.transaction_id }}',
+		            		type: 'post',
+		            		dataType: 'json',
+		            		data: { amount: $('#quickpay-amount').val() },
+		            		success: function(json) {
+		            			if (json['error']) {
+		            				alert(json['error']);
+		            			} else {
+		                            window.location.reload();
+		                        }
+		            		},
+		            		error: function(xhr, ajaxOptions, thrownError) {
+		            			alert(thrownError + "\r\n" + xhr.statusText + "\r\n" + xhr.responseText);
+		            		}
+		            	});
+		            }
+		        });
+		        $('#quickpay-refund').on('click', function() {
+		            var refund_conf = confirm('Refund ' + $('#quickpay-amount').val() + ' {{ quickpay.currency }}');
+		            if (refund_conf) {
+		                $.ajax({
+		                    url: 'index.php?route=sale/order/quickpay&user_token={{ user_token }}&action=refund&transaction_id={{ quickpay.transaction_id }}',
+		                    type: 'post',
+		                    dataType: 'json',
+		                    data: { amount: $('#quickpay-amount').val() },
+		                    success: function(json) {
+		                        if (json['error']) {
+		                            alert(json['error']);
+		                        } else {
+		                            window.location.reload();
+		                        }
+		                    },
+		                    error: function(xhr, ajaxOptions, thrownError) {
+		                        alert(thrownError + "\r\n" + xhr.statusText + "\r\n" + xhr.responseText);
+		                    }
+		                });
+		            }
+		        });
+		        --></script>
+			{% else %}
+			]]></add>
+		</operation>
+		<operation>
+			<search index="0"><![CDATA[<h3 class="panel-title"><i class="fa fa-cog"></i> {{ text_option }}</h3>]]></search>
+			<add position="after" offset="44">
+			{% endif %}
+			</add>
+		</operation>
+	</file>
+</modification>
