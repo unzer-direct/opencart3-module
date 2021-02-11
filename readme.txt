@@ -1,7 +1,7 @@
 /*********************************************************************************
  *
  * This is the official Quickpay plugin for Opencart 3+
- * The plugin is developed by Perfect Solution ApS (http://perfect-solution.dk)
+ * The plugin is maintained by SharksMedia A/S (https://sharksmedia.dk)
  *
  * This plugin only supports the v10+ manager.
  *
@@ -9,13 +9,14 @@
  *
  *********************************************************************************/
 
-1. Upload the content upload folder to the root of your OpenCart install. It is important to merge the folders and not replace them.
-2. Navigate to your OpenCart administration page.
-3. On your left, click the "Extensions" -> "Extensions" -> "Payments"
-4. Find the QuickPay modules of your choice in the list and click the green install icon.
-5. Click the blue button to edit the module.
-6. Type in your merchant information and press save.
-7. You are good to go.
+1. Navigate to your OpenCart administration page.
+2. On your left, click the "Extensions" -> "Installer".
+3. Click the blue "Upload" button and select the module file on your computer (quickpay-X.X.X.ocmod.zip).
+4. After installation click the "Extensions" -> "Extensions" -> "Payments".
+5. Find the QuickPay modules of your choice in the list and click the green install icon.
+6. Click the blue button to edit the module.
+7. Type in your merchant information and press save.
+8. You are good to go.
 
 
 /*********************************************************************************
@@ -29,5 +30,6 @@
 The main module called "QuickPay" supports recurring payment profiles. Since OpenCart does not have a built in recurring payment trigger mechanism,
 it is important to setup a cronjob if the recurring payments should be captured properly. Go the "QuickPay" module settings by clicking the
 blue pencil button to the right.
+
 Select the "Recurring payments" tab and copy the URL in the "Remote CRON URL" input field. It is advised that the cronjob is run at least once a day,
 but once an hour is recommended.
